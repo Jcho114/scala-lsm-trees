@@ -1,3 +1,4 @@
+import scala.annotation.static
 import scala.collection.mutable
 
 /**
@@ -9,9 +10,6 @@ class MemTable {
   private val map: mutable.TreeMap[String, String] = mutable.TreeMap()
   private var sizeBytes: Long = 0
 
-  val EntryOverheadBytes: Int = 16 // Set to actual value later
-  val Tombstone = "__TOMBSTONE__"
-
   /**
    * Place a key-value pair to the table
    * @param key Key
@@ -20,9 +18,9 @@ class MemTable {
   def put(key: String, value: String): Unit = {
     map.get(key) match {
       case None =>
-      case Some(value) => sizeBytes -= key.length + value.length + EntryOverheadBytes
+      case Some(value) => sizeBytes -= key.length + value.length + MemTable.EntryOverheadBytes
     }
-    sizeBytes += key.length + value.length + EntryOverheadBytes
+    sizeBytes += key.length + value.length + MemTable.EntryOverheadBytes
     map.addOne(key, value)
   }
 
@@ -40,7 +38,7 @@ class MemTable {
    */
   def delete(key: String): Option[String] = {
     val res = map.get(key)
-    put(key, Tombstone)
+    put(key, MemTable.Tombstone)
     res
   }
 
@@ -49,4 +47,9 @@ class MemTable {
    * @return size of table in bytes
    */
   def sizeInBytes(): Long = sizeBytes
+}
+
+object MemTable {
+  val EntryOverheadBytes: Int = 16 // Set to actual value later
+  val Tombstone = "__TOMBSTONE__"
 }
