@@ -39,7 +39,7 @@ class MemTable {
    * @return Some value if key exists and None otherwise
    */
   def delete(key: String): Option[String] = {
-    val res = map.get(key)
+    val res = get(key)
     put(key, MemTable.Tombstone)
     res
   }

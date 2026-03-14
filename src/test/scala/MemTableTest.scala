@@ -31,6 +31,7 @@ class MemTableTest extends AnyFlatSpec with should.Matchers {
     memTable.get("Key1") should be (Some("Value1"))
     memTable.delete("Key1") should be (Some("Value1"))
     memTable.get("Key1") should be (None)
+    memTable.delete("Key1") should be (None)
   }
 
   it should "keep track of its size in puts and deletes" in {
