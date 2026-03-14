@@ -10,6 +10,7 @@ class MemTable {
   private var sizeBytes: Long = 0
 
   val EntryOverheadBytes: Int = 16 // Set to actual value later
+  val Tombstone = "__TOMBSTONE__"
 
   /**
    * Place a key-value pair to the table
@@ -37,11 +38,10 @@ class MemTable {
    * @param key Key
    * @return Some value if key exists and None otherwise
    */
-  def delete(key: String): Option[String] = map.remove(key) match {
-    case Some(value) =>
-      sizeBytes -= key.length + value.length + EntryOverheadBytes
-      Some(value)
-    case None => None
+  def delete(key: String): Option[String] = {
+    val res = map.get(key)
+    put(key, Tombstone)
+    res
   }
 
   /**

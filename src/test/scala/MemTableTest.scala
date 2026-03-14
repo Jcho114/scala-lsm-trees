@@ -30,7 +30,7 @@ class MemTableTest extends AnyFlatSpec with should.Matchers {
     memTable.put("Key1", "Value1")
     memTable.get("Key1") should be (Some("Value1"))
     memTable.delete("Key1")
-    memTable.get("Key1") should be (None)
+    memTable.get("Key1") should be (Some(memTable.Tombstone))
   }
 
   it should "keep track of its size in puts and deletes" in {
@@ -43,6 +43,6 @@ class MemTableTest extends AnyFlatSpec with should.Matchers {
     memTable.put(key, longValue)
     memTable.sizeInBytes() should be (bytes - value.length + longValue.length)
     memTable.delete(key)
-    memTable.sizeInBytes() should be (0)
+    memTable.sizeInBytes() should be (key.length + memTable.Tombstone.length + memTable.EntryOverheadBytes)
   }
 }
