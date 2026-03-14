@@ -29,7 +29,7 @@ class MemTableTest extends AnyFlatSpec with should.Matchers {
     val memTable = new MemTable()
     memTable.put("Key1", "Value1")
     memTable.get("Key1") should be (Some("Value1"))
-    memTable.delete("Key1")
+    memTable.delete("Key1") should be (Some("Value1"))
     memTable.get("Key1") should be (Some(memTable.Tombstone))
   }
 
