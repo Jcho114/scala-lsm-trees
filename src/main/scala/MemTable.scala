@@ -1,4 +1,3 @@
-import scala.annotation.static
 import scala.collection.mutable
 
 /**
