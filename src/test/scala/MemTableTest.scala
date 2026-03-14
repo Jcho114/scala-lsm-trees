@@ -24,4 +24,12 @@ class MemTableTest extends AnyFlatSpec with should.Matchers {
     val memTable = new MemTable()
     memTable.get("Nonexistent") should be (None)
   }
+
+  it should "properly remove a deleted element" in {
+    val memTable = new MemTable()
+    memTable.put("Key1", "Value1")
+    memTable.get("Key1") should be (Some("Value1"))
+    memTable.delete("Key1")
+    memTable.get("Key1") should be (None)
+  }
 }

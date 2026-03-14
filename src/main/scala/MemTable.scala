@@ -23,4 +23,11 @@ class MemTable {
    * @return Some value if key exists and None otherwise
    */
   def get(key: String): Option[String] = map.get(key)
+
+  /**
+   * Delete a key-value pair from the table
+   * @param key Key
+   * @return Some value if key exists and None otherwise
+   */
+  def delete(key: String): Option[String] = map.remove(key)
 }
