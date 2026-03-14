@@ -28,7 +28,10 @@ class MemTable {
    * @param key Key
    * @return Some value if key exists and None otherwise
    */
-  def get(key: String): Option[String] = map.get(key)
+  def get(key: String): Option[String] = map.get(key) match {
+    case Some(MemTable.Tombstone) => None
+    case any => any
+  }
 
   /**
    * Delete a key-value pair from the table
