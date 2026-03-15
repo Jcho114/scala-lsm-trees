@@ -3,11 +3,13 @@ import scala.collection.mutable
 /**
  * MemTable class for in memory read and writes
  */
-class MemTable {
+class MemTable extends Iterable[(String, String)] {
   // Red-Black tree from stdlib
   // Plan to swap out with different custom implementations later
   private val map: mutable.TreeMap[String, String] = mutable.TreeMap()
-  private var sizeBytes: Long = 0
+  private var estimatedSizeBytes: Long = 0
+
+  override def iterator: Iterator[(String, String)] = map.iterator
 
   /**
    * Place a key-value pair to the table
@@ -17,9 +19,9 @@ class MemTable {
   def put(key: String, value: String): Unit = {
     map.get(key) match {
       case None =>
-      case Some(value) => sizeBytes -= key.length + value.length + MemTable.EntryOverheadBytes
+      case Some(value) => estimatedSizeBytes -= key.getBytes.length + value.getBytes.length + MemTable.EntryOverheadBytes
     }
-    sizeBytes += key.length + value.length + MemTable.EntryOverheadBytes
+    estimatedSizeBytes += key.getBytes.length + value.getBytes.length + MemTable.EntryOverheadBytes
     map.addOne(key, value)
   }
 
@@ -45,17 +47,10 @@ class MemTable {
    * Provides size of MemTable (if in disk) in bytes
    * @return size of table in bytes
    */
-  def sizeInBytes(): Long = sizeBytes
-
-  /**
-   * Flushes MemTable residing in memory to SSTable file on disk
-   */
-  def flushToSSTable(): Unit = {
-    println("Flushing to SSTable... (Not Yet Implemented)")
-  }
+  def estimatedSizeInBytes(): Long = estimatedSizeBytes
 }
 
 object MemTable {
-  val EntryOverheadBytes: Int = 16 // Set to actual value later
+  val EntryOverheadBytes: Int = 8 // Set to actual value later
   val Tombstone = "__TOMBSTONE__"
 }

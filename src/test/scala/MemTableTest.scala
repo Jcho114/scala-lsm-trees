@@ -39,11 +39,11 @@ class MemTableTest extends AnyFlatSpec with should.Matchers {
     val (key, value) = ("Value1", "Key1")
     val bytes: Long = key.length + value.length + MemTable.EntryOverheadBytes
     memTable.put(key, value)
-    memTable.sizeInBytes() should be (bytes)
+    memTable.estimatedSizeInBytes() should be (bytes)
     val longValue = "LongerValue"
     memTable.put(key, longValue)
-    memTable.sizeInBytes() should be (bytes - value.length + longValue.length)
+    memTable.estimatedSizeInBytes() should be (bytes - value.length + longValue.length)
     memTable.delete(key)
-    memTable.sizeInBytes() should be (key.length + MemTable.Tombstone.length + MemTable.EntryOverheadBytes)
+    memTable.estimatedSizeInBytes() should be (key.length + MemTable.Tombstone.length + MemTable.EntryOverheadBytes)
   }
 }
