@@ -6,25 +6,26 @@ import scala.collection.mutable
 class LSMTree {
   private var activeMemTable = new MemTable()
   private val flushableMemTableQueue = mutable.ArrayDeque[MemTable]()
+  private var numSSTables = 0
 
   /**
    * Background thread that flushes full MemTables residing in memory
    * to SSTables residing on disk
    */
-  private val worker = new Thread(() => {
+  private val flushWorker = new Thread(() => {
     while (true) {
       val memTable = flushableMemTableQueue.synchronized {
         while(flushableMemTableQueue.isEmpty) flushableMemTableQueue.wait()
         flushableMemTableQueue.head
       }
 
-      memTable.flushToSSTable()
+      flushMemTableToSSTable(memTable)
       flushableMemTableQueue.synchronized {
         flushableMemTableQueue.removeHead()
       }
     }
   })
-  worker.start()
+  flushWorker.start()
 
   /**
    * Put key-value pair to lsm-tree
@@ -35,7 +36,7 @@ class LSMTree {
   def put(key: String, value: String): Boolean = {
     if (value == MemTable.Tombstone) return false // Do not allow user to delete with tombstone
     activeMemTable.put(key, value)
-    if (activeMemTable.sizeInBytes() >= LSMTree.MinMemTableThresholdBytes) {
+    if (activeMemTable.estimatedSizeInBytes() >= LSMTree.MinMemTableThresholdBytes) {
       makeActiveMemTableFlushable()
     }
     true
@@ -75,6 +76,15 @@ class LSMTree {
    * @return Some value if key exists and None otherwise
    */
   def delete(key: String): Option[String] = activeMemTable.delete(key)
+
+  /**
+   * Flushes MemTable residing in memory to SSTable file on disk
+   */
+  private def flushMemTableToSSTable(memTable: MemTable): Unit = {
+    numSSTables += 1
+    val filename = f"$numSSTables%06d"
+    SSTableWriter.flush(memTable, filename)
+  }
 }
 
 private object LSMTree {
@@ -83,10 +93,7 @@ private object LSMTree {
 
 @main def main(): Unit = {
   val tree = new LSMTree()
-  tree.put("Key1", "Value1")
-  println(tree.get("Key1"))
-  tree.put("Key1", "Value2")
-  println(tree.get("Key1"))
-  tree.delete("Key1")
-  println(tree.get("Key1"))
+  for (i <- 1 to 1000) {
+    tree.put(s"Key$i", s"Value$i")
+  }
 }
