@@ -46,6 +46,13 @@ class MemTable {
    * @return size of table in bytes
    */
   def sizeInBytes(): Long = sizeBytes
+
+  /**
+   * Flushes MemTable residing in memory to SSTable file on disk
+   */
+  def flushToSSTable(): Unit = {
+    println("Flushing to SSTable... (Not Yet Implemented)")
+  }
 }
 
 object MemTable {
