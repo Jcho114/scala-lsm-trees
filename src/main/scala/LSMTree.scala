@@ -74,6 +74,7 @@ class LSMTree {
 
     for (filename <- listOfSSTables) {
       SSTableReader.findEntry(key, filename) match {
+        case Some(MemTable.Tombstone) => return None
         case Some(v) => return Some(v)
         case None =>
       }
