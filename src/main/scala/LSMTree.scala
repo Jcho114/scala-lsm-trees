@@ -1,3 +1,4 @@
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.mutable
 
@@ -9,6 +10,7 @@ class LSMTree {
   private val flushableMemTableQueue = mutable.ArrayDeque[MemTable]()
   private val listOfSSTables = mutable.ArrayDeque[String]()
   private val flushWorkerIsRunning = new AtomicBoolean(true)
+  private var filePath = ""
 
   /**
    * Background thread that flushes full MemTables residing in memory
@@ -29,7 +31,17 @@ class LSMTree {
       }
     }
   })
-  flushWorker.start()
+
+  /**
+   * Function to open the lsm tree
+   * @param path Path to lsm tree
+   */
+  def open(path: String): Unit = {
+    filePath = path
+    val dir = new File(filePath)
+    if (!dir.exists()) dir.mkdirs()
+    flushWorker.start()
+  }
 
   /**
    * Put key-value pair to lsm-tree
@@ -110,7 +122,7 @@ class LSMTree {
    */
   private def flushMemTableToSSTable(memTable: MemTable): Unit = {
     val numSSTables = listOfSSTables.length
-    val filename = f"${numSSTables+1}%06d"
+    val filename = f"$filePath/${numSSTables+1}%06d"
     SSTableWriter.flush(memTable, filename)
     listOfSSTables.prepend(filename)
   }
@@ -122,6 +134,7 @@ private object LSMTree {
 
 @main def main(): Unit = {
   val tree = new LSMTree()
+  tree.open("testdb")
   for (i <- 1 to 200) {
     tree.put(s"Key$i", s"Value$i")
   }
