@@ -79,6 +79,11 @@ object SSTableWriter {
     4 + index.key.getBytes("UTF-8").length + 4
   }
 
+  /**
+   * Helper function to write a string and its length to an SSTable file
+   * @param out Output file stream
+   * @param s String to write to file stream
+   */
   private def writeString(out: DataOutputStream, s: String): Unit = {
     val bytes = s.getBytes("UTF-8")
     out.writeInt(bytes.length)
