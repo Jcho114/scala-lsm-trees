@@ -1,4 +1,5 @@
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
 /**
  * LSM Tree main driver class
@@ -6,7 +7,7 @@ import scala.collection.mutable
 class LSMTree {
   private var activeMemTable = new MemTable()
   private val flushableMemTableQueue = mutable.ArrayDeque[MemTable]()
-  private var numSSTables = 0
+  private val listOfSSTables = mutable.ArrayDeque[String]()
 
   /**
    * Background thread that flushes full MemTables residing in memory
@@ -64,10 +65,22 @@ class LSMTree {
       tables = Iterator.single(activeMemTable) ++ flushableMemTableQueue.reverseIterator
     }
 
-    tables.iterator.flatMap(_.get(key)).collectFirst {
-      case MemTable.Tombstone => None
-      case v => Some(v)
-    }.flatten
+    for (table <- tables.iterator) {
+      table.get(key) match {
+        case Some(MemTable.Tombstone) => return None
+        case Some(v) => return Some(v)
+        case None =>
+      }
+    }
+
+    for (filename <- listOfSSTables) {
+      SSTableReader.findEntry(key, filename) match {
+        case Some(v) => return Some(v)
+        case None =>
+      }
+    }
+
+    None
   }
 
   /**
@@ -81,9 +94,10 @@ class LSMTree {
    * Flushes MemTable residing in memory to SSTable file on disk
    */
   private def flushMemTableToSSTable(memTable: MemTable): Unit = {
-    numSSTables += 1
-    val filename = f"$numSSTables%06d"
+    val numSSTables = listOfSSTables.length
+    val filename = f"${numSSTables+1}%06d"
     SSTableWriter.flush(memTable, filename)
+    listOfSSTables.prepend(filename)
   }
 }
 
@@ -93,7 +107,12 @@ private object LSMTree {
 
 @main def main(): Unit = {
   val tree = new LSMTree()
-  for (i <- 1 to 1000) {
+  for (i <- 1 to 200) {
     tree.put(s"Key$i", s"Value$i")
+  }
+  Thread.sleep(2000)
+  for (i <- 1 to 200) {
+    val res = tree.get(s"Key$i")
+    assert(res.isDefined && res.get == s"Value$i")
   }
 }
