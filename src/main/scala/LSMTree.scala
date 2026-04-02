@@ -1,3 +1,4 @@
+import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.mutable
 
 /**
@@ -7,21 +8,24 @@ class LSMTree {
   private var activeMemTable = new MemTable()
   private val flushableMemTableQueue = mutable.ArrayDeque[MemTable]()
   private val listOfSSTables = mutable.ArrayDeque[String]()
+  private val flushWorkerIsRunning = new AtomicBoolean(true)
 
   /**
    * Background thread that flushes full MemTables residing in memory
    * to SSTables residing on disk
    */
   private val flushWorker = new Thread(() => {
-    while (true) {
-      val memTable = flushableMemTableQueue.synchronized {
-        while(flushableMemTableQueue.isEmpty) flushableMemTableQueue.wait()
-        flushableMemTableQueue.head
+    while (flushWorkerIsRunning.get()) {
+      val memTableOpt = flushableMemTableQueue.synchronized {
+        while(flushableMemTableQueue.isEmpty && flushWorkerIsRunning.get()) flushableMemTableQueue.wait()
+        flushableMemTableQueue.headOption
       }
-
-      flushMemTableToSSTable(memTable)
-      flushableMemTableQueue.synchronized {
-        flushableMemTableQueue.removeHead()
+      memTableOpt match {
+        case Some(memTable) => flushMemTableToSSTable(memTable)
+          flushableMemTableQueue.synchronized {
+            flushableMemTableQueue.removeHead()
+          }
+        case None =>
       }
     }
   })
@@ -91,6 +95,17 @@ class LSMTree {
   def delete(key: String): Option[String] = activeMemTable.delete(key)
 
   /**
+   * Function to close the lsm-tree process
+   */
+  def close(): Unit = {
+    flushWorkerIsRunning.set(false)
+    flushableMemTableQueue.synchronized {
+      flushableMemTableQueue.notify()
+    }
+    flushWorker.join()
+  }
+
+  /**
    * Flushes MemTable residing in memory to SSTable file on disk
    */
   private def flushMemTableToSSTable(memTable: MemTable): Unit = {
@@ -115,4 +130,5 @@ private object LSMTree {
     val res = tree.get(s"Key$i")
     assert(res.isDefined && res.get == s"Value$i")
   }
+  tree.close()
 }
