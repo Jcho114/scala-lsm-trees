@@ -7,7 +7,7 @@ import scala.collection.mutable.ArrayBuffer
 object SSTableWriter {
   private val BlockSizeThreshold = 100 // Change later
   private type Entry = (String, String)
-  private class Index(val key: String, val offset: Int) {}
+  private case class Index(key: String, offset: Long)
 
   /**
    * Static method to flush MemTable in memory to SSTable on disk
@@ -15,79 +15,73 @@ object SSTableWriter {
    * @param filename Name of file to flush to
    */
   def flush(memTable: MemTable, filename: String): Unit = {
-    val dataOutputStream = new DataOutputStream(new FileOutputStream(new File(filename)))
-    var blockStartOffset = 0
-    var currentBlockSize = 0
-    var firstKeyInBlock: String | Null = null
-    val indices = new ArrayBuffer[Index]()
-    var fileOffset = 0
+    val file = new DataOutputStream(new FileOutputStream(new File(filename)))
+    try {
+      var blockStartOffset = 0
+      var currentBlockSize = 0
+      var firstKeyInBlock: String | Null = null
+      val indices = ArrayBuffer.empty[Index]
+      var fileOffset = 0
 
-    // Entry blocks
-    for ((key, value) <- memTable) {
-      if (firstKeyInBlock == null) {
-        firstKeyInBlock = key
+      for ((key, value) <- memTable) {
+        if (firstKeyInBlock == null) {
+          firstKeyInBlock = key
+        }
+
+        val entrySize = writeEntry(file, key, value)
+        fileOffset += entrySize
+        currentBlockSize += entrySize
+
+        if (currentBlockSize >= BlockSizeThreshold) {
+          indices.addOne(Index(firstKeyInBlock, blockStartOffset))
+          blockStartOffset = fileOffset
+          firstKeyInBlock = null
+          currentBlockSize = 0
+        }
       }
 
-      val entrySize = writeEntry(dataOutputStream, key, value)
-      fileOffset += entrySize
-      currentBlockSize += entrySize
+      if (firstKeyInBlock != null) indices += Index(firstKeyInBlock, blockStartOffset)
 
-      if (currentBlockSize >= BlockSizeThreshold) {
-        indices.addOne(new Index(firstKeyInBlock, blockStartOffset))
-        blockStartOffset = fileOffset
-        firstKeyInBlock = null
-        currentBlockSize = 0
+      val indexOffset = fileOffset
+      for (index <- indices) {
+        fileOffset += writeIndex(file, index)
       }
-    }
 
-    if (firstKeyInBlock != null) {
-      indices.addOne(new Index(firstKeyInBlock, blockStartOffset))
-    }
-
-    val indexOffset = fileOffset
-
-    // Sparse index
-    for (index <- indices) {
-      fileOffset += writeIndex(dataOutputStream, index)
-    }
-
-    // Footer
-    val indexSize = fileOffset - indexOffset
-    dataOutputStream.writeLong(indexOffset)
-    dataOutputStream.writeLong(indexSize)
-
-    dataOutputStream.flush()
-    dataOutputStream.close()
+      val indexSize = fileOffset - indexOffset
+      file.writeLong(indexOffset)
+      file.writeLong(indexSize)
+      file.flush()
+    } finally file.close()
   }
 
   /**
    * Helper function to write entry to file
-   * @param dataOutputStream Output file stream
+   * @param out Output file stream
    * @param key Key of entry
    * @param value Value of entry
    * @return Size of entry on disk
    */
-  private def writeEntry(dataOutputStream: DataOutputStream, key: String, value: String): Int = {
-    val kb = key.getBytes("UTF-8")
-    val vb = value.getBytes("UTF-8")
-    dataOutputStream.writeInt(kb.length)
-    dataOutputStream.write(kb)
-    dataOutputStream.writeInt(vb.length)
-    dataOutputStream.write(vb)
-    4 + kb.length + 4 + vb.length
+  private def writeEntry(out: DataOutputStream, key: String, value: String): Int = {
+    writeString(out, key)
+    writeString(out, value)
+    4 + key.getBytes("UTF-8").length + 4 + value.getBytes("UTF-8").length
   }
 
   /**
    * Helper function to write index to file
-   * @param dataOutputStream Output file stream
+   * @param out Output file stream
    * @param index Index for block
    * @return Size of index on disk
    */
-  private def writeIndex(dataOutputStream: DataOutputStream, index: Index): Int = {
-    val kb = index.key.getBytes("UTF-8")
-    dataOutputStream.writeInt(kb.length)
-    dataOutputStream.write(kb)
-    dataOutputStream.writeInt(index.offset)
-    4 + kb.length + 4
+  private def writeIndex(out: DataOutputStream, index: Index): Int = {
+    writeString(out, index.key)
+    out.writeLong(index.offset)
+    4 + index.key.getBytes("UTF-8").length + 4
+  }
+
+  private def writeString(out: DataOutputStream, s: String): Unit = {
+    val bytes = s.getBytes("UTF-8")
+    out.writeInt(bytes.length)
+    out.write(bytes)
   }
 }
