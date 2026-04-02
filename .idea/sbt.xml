@@ -7,8 +7,8 @@
         <option name="externalProjectPath" value="$PROJECT_DIR$" />
         <option name="modules">
           <set>
-            <option value="C:\Users\jcho_\IdeaProjects\scala-lsm-trees" />
-            <option value="C:\Users\jcho_\IdeaProjects\scala-lsm-trees\project" />
+            <option value="$PROJECT_DIR$" />
+            <option value="$PROJECT_DIR$/project" />
           </set>
         </option>
         <option name="sbtVersion" value="1.12.5" />
