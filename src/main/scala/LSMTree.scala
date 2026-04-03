@@ -9,7 +9,7 @@ import scala.compiletime.uninitialized
 class LSMTree {
   private var activeMemTable: MemTable = uninitialized
   private val flushableMemTableQueue = mutable.ArrayDeque[MemTable]()
-  private val listOfSSTables = mutable.ArrayDeque[String]()
+  private val listOfSSTables = mutable.ArrayDeque[SSTable]()
   private val flushWorkerIsRunning = new AtomicBoolean(true)
   private var filePath = ""
 
@@ -95,8 +95,8 @@ class LSMTree {
       }
     }
 
-    for (filename <- listOfSSTables) {
-      SSTableReader.findEntry(key, filename) match {
+    for (sst <- listOfSSTables) {
+      sst.findEntry(key) match {
         case Some(MemTable.Tombstone) => return None
         case Some(v) => return Some(v)
         case None =>
@@ -129,9 +129,9 @@ class LSMTree {
    */
   private def flushMemTableToSSTable(memTable: MemTable): Unit = {
     val filename = f"$filePath/${memTable.id}%06d"
-    SSTableWriter.flush(memTable, filename)
+    val sst = SSTable.fromMemTable(memTable, filename)
     memTable.wal.foreach(wal => wal.close())
-    listOfSSTables.prepend(filename)
+    listOfSSTables.prepend(sst)
   }
 }
 
