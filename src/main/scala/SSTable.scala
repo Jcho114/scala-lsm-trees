@@ -8,7 +8,6 @@ import java.nio.charset.StandardCharsets
  */
 class SSTable {
   private val BlockSizeThreshold = 100 // Change later
-  private type Entry = (String, String)
   private case class Index(key: String, offset: Long)
   private var cursor: RandomAccessFile = uninitialized
   private var indexOffset: Long = uninitialized
@@ -37,8 +36,8 @@ class SSTable {
     val nextKeyOffset = if (i == indices.length - 1) indexOffset else indices(i + 1).offset
     cursor.seek(keyIndex.offset)
     while (cursor.getFilePointer < nextKeyOffset) {
-      val (entryKey, entryValue) = readNextEntry()
-      if (entryKey == key) return Some(entryValue)
+      val entry = readNextEntry()
+      if (entry.key == key) return Some(entry.value)
     }
     None
   }
@@ -134,7 +133,7 @@ class SSTable {
   private def readNextEntry(): Entry = {
     val entryKey = readString()
     val entryValue = readString()
-    (entryKey, entryValue)
+    Entry(entryKey, entryValue)
   }
 
   /**
