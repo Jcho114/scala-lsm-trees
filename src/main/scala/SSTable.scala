@@ -1,14 +1,12 @@
 import java.io.{DataOutputStream, File, FileOutputStream, RandomAccessFile}
 import scala.collection.mutable.ArrayBuffer
 import scala.compiletime.uninitialized
-import java.nio.charset.StandardCharsets
 
 /**
  * Class to abstract SSTable read and write queries
  */
 class SSTable {
   private val BlockSizeThreshold = 100 // Change later
-  private case class Index(key: String, offset: Long)
   private var cursor: RandomAccessFile = uninitialized
   private var indexOffset: Long = uninitialized
   private var indexSize: Long = uninitialized
@@ -36,7 +34,7 @@ class SSTable {
     val nextKeyOffset = if (i == indices.length - 1) indexOffset else indices(i + 1).offset
     cursor.seek(keyIndex.offset)
     while (cursor.getFilePointer < nextKeyOffset) {
-      val entry = readNextEntry()
+      val entry = ReaderWriterUtils.readNextEntry(cursor)
       if (entry.key == key) return Some(entry.value)
     }
     None
@@ -61,7 +59,7 @@ class SSTable {
           firstKeyInBlock = key
         }
 
-        val entrySize = writeEntry(file, key, value)
+        val entrySize = ReaderWriterUtils.writeEntry(file, key, value)
         fileOffset += entrySize
         currentBlockSize += entrySize
 
@@ -77,7 +75,7 @@ class SSTable {
 
       val indexOffset = fileOffset
       for (index <- indices) {
-        fileOffset += writeIndex(file, index)
+        fileOffset += ReaderWriterUtils.writeIndex(file, index)
       }
 
       val indexSize = fileOffset - indexOffset
@@ -104,7 +102,7 @@ class SSTable {
   private def readSparseIndex(): Unit = {
     cursor.seek(indexOffset)
     while (cursor.getFilePointer - indexOffset < indexSize) {
-      val indexKey = readString()
+      val indexKey = ReaderWriterUtils.readString(cursor)
       val offset = cursor.readLong()
       indices += Index(indexKey, offset)
     }
@@ -124,63 +122,6 @@ class SSTable {
       else return c
     }
     r
-  }
-
-  /**
-   * Helper function to read an entry in the SSTable block(s)
-   * @return Entry object parsed from file
-   */
-  private def readNextEntry(): Entry = {
-    val entryKey = readString()
-    val entryValue = readString()
-    Entry(entryKey, entryValue)
-  }
-
-  /**
-   * Helper function to read a string from an SSTable file
-   * @return The newly read string
-   */
-  private def readString(): String = {
-    val len = cursor.readInt()
-    val buf = new Array[Byte](len)
-    cursor.readFully(buf)
-    new String(buf, StandardCharsets.UTF_8)
-  }
-
-  /**
-   * Helper function to write entry to file
-   * @param out   Output file stream
-   * @param key   Key of entry
-   * @param value Value of entry
-   * @return Size of entry on disk
-   */
-  private def writeEntry(out: DataOutputStream, key: String, value: String): Int = {
-    writeString(out, key)
-    writeString(out, value)
-    4 + key.getBytes("UTF-8").length + 4 + value.getBytes("UTF-8").length
-  }
-
-  /**
-   * Helper function to write index to file
-   * @param out   Output file stream
-   * @param index Index for block
-   * @return Size of index on disk
-   */
-  private def writeIndex(out: DataOutputStream, index: Index): Int = {
-    writeString(out, index.key)
-    out.writeLong(index.offset)
-    4 + index.key.getBytes("UTF-8").length + 4
-  }
-
-  /**
-   * Helper function to write a string and its length to an SSTable file
-   * @param out Output file stream
-   * @param s   String to write to file stream
-   */
-  private def writeString(out: DataOutputStream, s: String): Unit = {
-    val bytes = s.getBytes("UTF-8")
-    out.writeInt(bytes.length)
-    out.write(bytes)
   }
 }
 
