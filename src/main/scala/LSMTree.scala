@@ -1,12 +1,13 @@
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.mutable
+import scala.compiletime.uninitialized
 
 /**
  * LSM Tree main driver class
  */
 class LSMTree {
-  private var activeMemTable = new MemTable()
+  private var activeMemTable: MemTable = uninitialized
   private val flushableMemTableQueue = mutable.ArrayDeque[MemTable]()
   private val listOfSSTables = mutable.ArrayDeque[String]()
   private val flushWorkerIsRunning = new AtomicBoolean(true)
@@ -40,6 +41,7 @@ class LSMTree {
     filePath = path
     val dir = new File(filePath)
     if (!dir.exists()) dir.mkdirs()
+    createNewActiveMemTable()
     flushWorker.start()
   }
 
@@ -66,7 +68,12 @@ class LSMTree {
       flushableMemTableQueue.append(activeMemTable)
       flushableMemTableQueue.notify()
     }
-    activeMemTable = new MemTable()
+    createNewActiveMemTable()
+  }
+
+  private def createNewActiveMemTable(): Unit = {
+    val wal = new WriteAheadLog(f"$filePath/${MemTable.counter}%06d.wal")
+    activeMemTable = new MemTable(wal)
   }
 
   /**
@@ -121,9 +128,9 @@ class LSMTree {
    * Flushes MemTable residing in memory to SSTable file on disk
    */
   private def flushMemTableToSSTable(memTable: MemTable): Unit = {
-    val numSSTables = listOfSSTables.length
-    val filename = f"$filePath/${numSSTables+1}%06d"
+    val filename = f"$filePath/${memTable.id}%06d"
     SSTableWriter.flush(memTable, filename)
+    memTable.wal.foreach(wal => wal.close())
     listOfSSTables.prepend(filename)
   }
 }
