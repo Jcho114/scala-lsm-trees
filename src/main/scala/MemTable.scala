@@ -15,6 +15,9 @@ class MemTable extends Iterable[(String, String)] {
 
   def this(wal: WriteAheadLog) = {
     this()
+    for (entry <- wal.entries) {
+      put(entry.key, entry.value)
+    }
     this.wal = Some(wal)
   }
 
