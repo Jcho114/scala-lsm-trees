@@ -11,6 +11,7 @@ class LSMTree {
   private val flushableMemTableQueue = mutable.ArrayDeque[MemTable]()
   private val listOfSSTables = mutable.ArrayDeque[SSTable]()
   private val flushWorkerIsRunning = new AtomicBoolean(true)
+  private var nextGenerationId = 0
   private var filePath = ""
 
   /**
@@ -18,17 +19,24 @@ class LSMTree {
    * to SSTables residing on disk
    */
   private val flushWorker = new Thread(() => {
-    while (flushWorkerIsRunning.get()) {
+    var running = true
+
+    while (running) {
       val memTableOpt = flushableMemTableQueue.synchronized {
-        while(flushableMemTableQueue.isEmpty && flushWorkerIsRunning.get()) flushableMemTableQueue.wait()
-        flushableMemTableQueue.headOption
+        while(flushableMemTableQueue.isEmpty && flushWorkerIsRunning.get()) {
+          flushableMemTableQueue.wait()
+        }
+
+        if (flushableMemTableQueue.isEmpty && !flushWorkerIsRunning.get()) {
+          None
+        } else {
+          Some(flushableMemTableQueue.removeHead())
+        }
       }
+
       memTableOpt match {
         case Some(memTable) => flushMemTableToSSTable(memTable)
-          flushableMemTableQueue.synchronized {
-            flushableMemTableQueue.removeHead()
-          }
-        case None =>
+        case None => running = false
       }
     }
   })
@@ -41,13 +49,78 @@ class LSMTree {
     filePath = path
     val dir = new File(filePath)
     if (!dir.exists()) dir.mkdirs()
-    createNewActiveMemTable()
+
+    val files = dir.listFiles().filter(_.isFile)
+
+    val sstFiles = files
+      .filter(_.getName.matches(SSTable.Regex))
+      .sortBy(_.getName.stripSuffix(".sst").toInt)
+    val sstIds = sstFiles.map(file => parseGenerationId(file.getName, ".sst"))
+    val recoveredSstIds = sstIds.toSet
+
+    for (sstFile <- sstFiles) {
+      val sst = SSTable.fromDisk(sstFile.getPath)
+      listOfSSTables.prepend(sst)
+    }
+
+    val walFiles = files
+      .filter(_.getName.matches(WriteAheadLog.Regex))
+      .sortBy(file => parseGenerationId(file.getName, ".wal"))
+    val unrecoveredWalFiles = walFiles.filterNot(file =>
+      recoveredSstIds.contains(parseGenerationId(file.getName, ".wal"))
+    )
+
+    val walIds = walFiles.map(file => parseGenerationId(file.getName, ".wal"))
+    val existingIds = sstIds ++ walIds
+    nextGenerationId = if (existingIds.isEmpty) 0 else existingIds.max + 1
+
+    for (walFile <- unrecoveredWalFiles.dropRight(1)) {
+      addMemTableToFlushableQueue(recoverMemTableFromWal(walFile))
+    }
+
+    unrecoveredWalFiles.lastOption match {
+      case Some(walFile) =>
+        activeMemTable = recoverMemTableFromWal(walFile)
+        if (activeMemTable.estimatedSizeInBytes() >= LSMTree.MinMemTableThresholdBytes) {
+          addMemTableToFlushableQueue(activeMemTable)
+          createNewActiveMemTable()
+        }
+      case None =>
+        createNewActiveMemTable()
+    }
     flushWorker.start()
   }
 
   /**
+   * Helper function to append active MemTable to flush queue
+   * @param memTable MemTable to append to queue
+   */
+  private def addMemTableToFlushableQueue(memTable: MemTable): Unit = {
+    flushableMemTableQueue.synchronized {
+      flushableMemTableQueue.append(memTable)
+      flushableMemTableQueue.notify()
+    }
+  }
+
+  private def createNewActiveMemTable(): Unit = {
+    val id = allocateGenerationId()
+    val wal = new WriteAheadLog(f"$filePath/$id%06d.wal")
+    activeMemTable = new MemTable(id, wal)
+  }
+
+  private def recoverMemTableFromWal(walFile: File): MemTable = {
+    val id = parseGenerationId(walFile.getName, ".wal")
+    val wal = new WriteAheadLog(walFile.getPath)
+    new MemTable(id, wal)
+  }
+
+  private def parseGenerationId(filename: String, suffix: String): Int =
+    filename.stripSuffix(suffix).toInt
+
+  /**
    * Put key-value pair to lsm-tree
-   * @param key Key
+   *
+   * @param key   Key
    * @param value Value
    * @return True if put succeeds otherwise False
    */
@@ -55,25 +128,10 @@ class LSMTree {
     if (value == MemTable.Tombstone) return false // Do not allow user to delete with tombstone
     activeMemTable.put(key, value)
     if (activeMemTable.estimatedSizeInBytes() >= LSMTree.MinMemTableThresholdBytes) {
-      makeActiveMemTableFlushable()
+      addMemTableToFlushableQueue(activeMemTable)
+      createNewActiveMemTable()
     }
     true
-  }
-
-  /**
-   * Helper function to append active MemTable to flush queue
-   */
-  private def makeActiveMemTableFlushable(): Unit = {
-    flushableMemTableQueue.synchronized {
-      flushableMemTableQueue.append(activeMemTable)
-      flushableMemTableQueue.notify()
-    }
-    createNewActiveMemTable()
-  }
-
-  private def createNewActiveMemTable(): Unit = {
-    val wal = new WriteAheadLog(f"$filePath/${MemTable.counter}%06d.wal")
-    activeMemTable = new MemTable(wal)
   }
 
   /**
@@ -128,10 +186,16 @@ class LSMTree {
    * Flushes MemTable residing in memory to SSTable file on disk
    */
   private def flushMemTableToSSTable(memTable: MemTable): Unit = {
-    val filename = f"$filePath/${memTable.id}%06d"
+    val filename = f"$filePath/${memTable.id}%06d.sst"
     val sst = SSTable.fromMemTable(memTable, filename)
     memTable.wal.foreach(wal => wal.close())
     listOfSSTables.prepend(sst)
+  }
+
+  private def allocateGenerationId(): Int = {
+    val id = nextGenerationId
+    nextGenerationId += 1
+    id
   }
 }
 

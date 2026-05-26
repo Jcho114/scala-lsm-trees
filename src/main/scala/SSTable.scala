@@ -126,6 +126,8 @@ class SSTable {
 }
 
 object SSTable {
+  val Regex = """\d{6}\.sst"""
+
   /**
    * Static function to create SSTable from a MemTable
    * @param memTable MemTable to convert to SSTable

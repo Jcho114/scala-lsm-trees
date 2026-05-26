@@ -36,3 +36,7 @@ class WriteAheadLog(filename: String) {
     if (tempFile.exists()) tempFile.delete()
   }
 }
+
+object WriteAheadLog {
+  val Regex = """\d{6}\.wal"""
+}

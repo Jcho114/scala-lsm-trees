@@ -4,17 +4,15 @@ import scala.language.postfixOps
 /**
  * MemTable class for in memory read and writes
  */
-class MemTable extends Iterable[(String, String)] {
+class MemTable(val id: Int) extends Iterable[(String, String)] {
   // Red-Black tree from stdlib
   // Plan to swap out with different custom implementations later
   private val map: mutable.TreeMap[String, String] = mutable.TreeMap()
   private var estimatedSizeBytes: Long = 0
   var wal: Option[WriteAheadLog] = None
-  val id: Int = MemTable.counter
-  MemTable.counter = MemTable.counter+1
 
-  def this(wal: WriteAheadLog) = {
-    this()
+  def this(id: Int, wal: WriteAheadLog) = {
+    this(id)
     for (entry <- wal.entries) {
       put(entry.key, entry.value)
     }
@@ -66,5 +64,4 @@ class MemTable extends Iterable[(String, String)] {
 object MemTable {
   val EntryOverheadBytes: Int = 8 // Set to actual value later
   val Tombstone = "__TOMBSTONE__"
-  var counter = 0
 }

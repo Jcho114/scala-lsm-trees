@@ -6,7 +6,7 @@ import java.io.File
 
 class SSTableTest extends AnyFlatSpec with should.Matchers {
   "A SSTable" should "lookup a SSTable file correctly when created from disk" in {
-    val testFileUrl = getClass.getResource("testsstable")
+    val testFileUrl = getClass.getResource("testsstable.sst")
     assert(testFileUrl != null, "test table file not found")
     val testFileName = testFileUrl.getPath
     val sst = SSTable.fromDisk(testFileName)
@@ -27,7 +27,7 @@ class SSTableTest extends AnyFlatSpec with should.Matchers {
 
   it should "lookup a SSTable file correctly when created from a MemTable" in {
     val filename = "sstabletempfile"
-    val memTable = MemTable()
+    val memTable = new MemTable(0)
     for (i <- 1 to 10) {
       memTable.put(f"Key$i", f"Value$i")
     }
