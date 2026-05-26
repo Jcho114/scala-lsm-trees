@@ -140,7 +140,13 @@ object SSTable {
    */
   def fromMemTable(memTable: MemTable, filename: String): SSTable = {
     val sst = new SSTable()
-    sst.flush(memTable, filename).initialize()
+    sst.flush(memTable, filename)
+    try sst.initialize()
+    catch {
+      case e: Throwable =>
+        sst.close()
+        throw e
+    }
   }
 
   /**
@@ -151,6 +157,11 @@ object SSTable {
   def fromDisk(filename: String): SSTable = {
     val sst = new SSTable()
     sst.cursor = new RandomAccessFile(filename, "r")
-    sst.initialize()
+    try sst.initialize()
+    catch {
+      case e: Throwable =>
+        sst.close()
+        throw e
+    }
   }
 }
