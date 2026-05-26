@@ -50,7 +50,9 @@ class LSMTree {
     val dir = new File(filePath)
     if (!dir.exists()) dir.mkdirs()
 
-    val files = dir.listFiles().filter(_.isFile)
+    val files = Option(dir.listFiles())
+      .getOrElse(Array.empty[File])
+      .filter(_.isFile)
 
     val sstFiles = files
       .filter(_.getName.matches(SSTable.Regex))
@@ -98,7 +100,7 @@ class LSMTree {
   private def addMemTableToFlushableQueue(memTable: MemTable): Unit = {
     flushableMemTableQueue.synchronized {
       flushableMemTableQueue.append(memTable)
-      flushableMemTableQueue.notify()
+      flushableMemTableQueue.notifyAll()
     }
   }
 
@@ -140,10 +142,14 @@ class LSMTree {
    * @return Some value if key exists and None otherwise
    */
   def get(key: String): Option[String] = {
-    var tables: Iterator[MemTable] = Iterator()
-    flushableMemTableQueue.synchronized {
-      tables = Iterator.single(activeMemTable) ++ flushableMemTableQueue.reverseIterator
+    val (active, queued, ssts) = flushableMemTableQueue.synchronized {
+      (
+        activeMemTable,
+        flushableMemTableQueue.toList.reverse,
+        listOfSSTables.toList
+      )
     }
+    val tables = Iterator.single(active) ++ queued.iterator
 
     for (table <- tables.iterator) {
       table.get(key) match {
@@ -153,7 +159,7 @@ class LSMTree {
       }
     }
 
-    for (sst <- listOfSSTables) {
+    for (sst <- ssts) {
       sst.findEntry(key) match {
         case Some(MemTable.Tombstone) => return None
         case Some(v) => return Some(v)
@@ -169,7 +175,14 @@ class LSMTree {
    * @param key Key
    * @return Some value if key exists and None otherwise
    */
-  def delete(key: String): Option[String] = activeMemTable.delete(key)
+  def delete(key: String): Option[String] = {
+    val res = activeMemTable.delete(key)
+    if (activeMemTable.estimatedSizeInBytes() >= LSMTree.MinMemTableThresholdBytes) {
+      addMemTableToFlushableQueue(activeMemTable)
+      createNewActiveMemTable()
+    }
+    res
+  }
 
   /**
    * Function to close the lsm-tree process
@@ -177,7 +190,7 @@ class LSMTree {
   def close(): Unit = {
     flushWorkerIsRunning.set(false)
     flushableMemTableQueue.synchronized {
-      flushableMemTableQueue.notify()
+      flushableMemTableQueue.notifyAll()
     }
     flushWorker.join()
   }
@@ -188,7 +201,7 @@ class LSMTree {
   private def flushMemTableToSSTable(memTable: MemTable): Unit = {
     val filename = f"$filePath/${memTable.id}%06d.sst"
     val sst = SSTable.fromMemTable(memTable, filename)
-    memTable.wal.foreach(wal => wal.close())
+    memTable.wal.foreach(wal => wal.delete())
     listOfSSTables.prepend(sst)
   }
 

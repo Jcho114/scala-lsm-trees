@@ -1,10 +1,9 @@
 import scala.collection.mutable
-import scala.language.postfixOps
 
 /**
  * MemTable class for in memory read and writes
  */
-class MemTable(val id: Int) extends Iterable[(String, String)] {
+class MemTable(val id: Int) extends Iterable[(String, String)], AutoCloseable {
   // Red-Black tree from stdlib
   // Plan to swap out with different custom implementations later
   private val map: mutable.TreeMap[String, String] = mutable.TreeMap()
@@ -27,7 +26,7 @@ class MemTable(val id: Int) extends Iterable[(String, String)] {
    * @param value Value
    */
   def put(key: String, value: String): Unit = {
-    wal.foreach(wal => wal.write(key, value))
+    wal.foreach(_.write(key, value))
     map.get(key) match {
       case None =>
       case Some(value) => estimatedSizeBytes -= key.getBytes.length + value.getBytes.length + MemTable.EntryOverheadBytes
@@ -59,6 +58,10 @@ class MemTable(val id: Int) extends Iterable[(String, String)] {
    * @return size of table in bytes
    */
   def estimatedSizeInBytes(): Long = estimatedSizeBytes
+
+  override def close(): Unit = {
+    wal.foreach(_.close())
+  }
 }
 
 object MemTable {
