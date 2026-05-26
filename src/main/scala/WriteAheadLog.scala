@@ -9,8 +9,9 @@ class WriteAheadLog(filename: String) extends AutoCloseable {
   private def initEntriesFromFile(filename: String): Unit = {
     val tempFile = new File(filename)
     if (!tempFile.exists()) return
+
+    val file = new RandomAccessFile(filename, "r")
     try {
-      val file = new RandomAccessFile(filename, "r")
       while (file.getFilePointer < file.length()) {
         val entry = ReaderWriterUtils.readNextEntry(file)
         entries.addOne(entry)

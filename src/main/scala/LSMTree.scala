@@ -50,46 +50,65 @@ class LSMTree {
     val dir = new File(filePath)
     if (!dir.exists()) dir.mkdirs()
 
-    val files = Option(dir.listFiles())
-      .getOrElse(Array.empty[File])
-      .filter(_.isFile)
+    val recoveredSSTables = mutable.ArrayDeque.empty[SSTable]
+    val recoveredFlushables = mutable.ArrayBuffer.empty[MemTable]
+    var recoveredActive: Option[MemTable] = None
+    var recoveredNextGenerationId = 0
 
-    val sstFiles = files
-      .filter(_.getName.matches(SSTable.Regex))
-      .sortBy(_.getName.stripSuffix(".sst").toInt)
-    val sstIds = sstFiles.map(file => parseGenerationId(file.getName, ".sst"))
-    val recoveredSstIds = sstIds.toSet
+    try {
+      val files = Option(dir.listFiles())
+        .getOrElse(Array.empty[File])
+        .filter(_.isFile)
 
-    for (sstFile <- sstFiles) {
-      val sst = SSTable.fromDisk(sstFile.getPath)
-      listOfSSTables.prepend(sst)
+      val sstFiles = files
+        .filter(_.getName.matches(SSTable.Regex))
+        .sortBy(_.getName.stripSuffix(".sst").toInt)
+      val sstIds = sstFiles.map(file => parseGenerationId(file.getName, ".sst"))
+      val recoveredSstIds = sstIds.toSet
+
+      for (sstFile <- sstFiles) {
+        val sst = SSTable.fromDisk(sstFile.getPath)
+        recoveredSSTables.prepend(sst)
+      }
+
+      val walFiles = files
+        .filter(_.getName.matches(WriteAheadLog.Regex))
+        .sortBy(file => parseGenerationId(file.getName, ".wal"))
+      val unrecoveredWalFiles = walFiles.filterNot(file =>
+        recoveredSstIds.contains(parseGenerationId(file.getName, ".wal"))
+      )
+
+      val walIds = walFiles.map(file => parseGenerationId(file.getName, ".wal"))
+      val existingIds = sstIds ++ walIds
+      recoveredNextGenerationId = if (existingIds.isEmpty) 0 else existingIds.max + 1
+
+      for (walFile <- unrecoveredWalFiles.dropRight(1)) {
+        recoveredFlushables += recoverMemTableFromWal(walFile)
+      }
+
+      recoveredActive = unrecoveredWalFiles.lastOption match {
+        case Some(walFile) =>
+          val memTable = recoverMemTableFromWal(walFile)
+          if (memTable.estimatedSizeInBytes() >= LSMTree.MinMemTableThresholdBytes) {
+            recoveredFlushables += memTable
+            None
+          } else {
+            Some(memTable)
+          }
+        case None => None
+      }
+    } catch {
+      case e: Throwable =>
+        recoveredActive.foreach(_.close())
+        recoveredFlushables.foreach(_.close())
+        recoveredSSTables.foreach(_.close())
+        throw e
     }
 
-    val walFiles = files
-      .filter(_.getName.matches(WriteAheadLog.Regex))
-      .sortBy(file => parseGenerationId(file.getName, ".wal"))
-    val unrecoveredWalFiles = walFiles.filterNot(file =>
-      recoveredSstIds.contains(parseGenerationId(file.getName, ".wal"))
-    )
-
-    val walIds = walFiles.map(file => parseGenerationId(file.getName, ".wal"))
-    val existingIds = sstIds ++ walIds
-    nextGenerationId = if (existingIds.isEmpty) 0 else existingIds.max + 1
-
-    for (walFile <- unrecoveredWalFiles.dropRight(1)) {
-      addMemTableToFlushableQueue(recoverMemTableFromWal(walFile))
-    }
-
-    unrecoveredWalFiles.lastOption match {
-      case Some(walFile) =>
-        activeMemTable = recoverMemTableFromWal(walFile)
-        if (activeMemTable.estimatedSizeInBytes() >= LSMTree.MinMemTableThresholdBytes) {
-          addMemTableToFlushableQueue(activeMemTable)
-          createNewActiveMemTable()
-        }
-      case None =>
-        createNewActiveMemTable()
-    }
+    nextGenerationId = recoveredNextGenerationId
+    recoveredSSTables.foreach(listOfSSTables.append)
+    recoveredFlushables.foreach(addMemTableToFlushableQueue)
+    activeMemTable = recoveredActive.getOrElse(newActiveMemTable())
     flushWorker.start()
   }
 
@@ -104,16 +123,26 @@ class LSMTree {
     }
   }
 
-  private def createNewActiveMemTable(): Unit = {
+  private def newActiveMemTable(): MemTable = {
     val id = allocateGenerationId()
     val wal = new WriteAheadLog(f"$filePath/$id%06d.wal")
-    activeMemTable = new MemTable(id, wal)
+    new MemTable(id, wal)
+  }
+
+  private def createNewActiveMemTable(): Unit = {
+    activeMemTable = newActiveMemTable()
   }
 
   private def recoverMemTableFromWal(walFile: File): MemTable = {
     val id = parseGenerationId(walFile.getName, ".wal")
     val wal = new WriteAheadLog(walFile.getPath)
-    new MemTable(id, wal)
+    try {
+      new MemTable(id, wal)
+    } catch {
+      case e: Throwable =>
+        wal.close()
+        throw e
+    }
   }
 
   private def parseGenerationId(filename: String, suffix: String): Int =

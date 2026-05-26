@@ -5,7 +5,7 @@ import scala.compiletime.uninitialized
 /**
  * Class to abstract SSTable read and write queries
  */
-class SSTable {
+class SSTable extends AutoCloseable {
   private val BlockSizeThreshold = 100 // Change later
   private var cursor: RandomAccessFile = uninitialized
   private var indexOffset: Long = uninitialized
@@ -122,6 +122,10 @@ class SSTable {
       else return c
     }
     r
+  }
+
+  override def close(): Unit = {
+    if (cursor != null) cursor.close()
   }
 }
 
