@@ -7,13 +7,13 @@ import matchers._
  */
 class MemTableTest extends AnyFlatSpec with should.Matchers {
   "A MemTable" should "retrieve a stored key value pair" in {
-    val memTable = new MemTable()
+    val memTable = new MemTable(0)
     memTable.put("Key1", "Value1")
     memTable.get("Key1") should be (Some("Value1"))
   }
 
   it should "update a key value pair" in {
-    val memTable = new MemTable()
+    val memTable = new MemTable(0)
     memTable.put("Key1", "Value1")
     memTable.get("Key1") should be (Some("Value1"))
     memTable.put("Key1", "Value2")
@@ -21,12 +21,12 @@ class MemTableTest extends AnyFlatSpec with should.Matchers {
   }
 
   it should "return None for a nonexistent key" in {
-    val memTable = new MemTable()
+    val memTable = new MemTable(0)
     memTable.get("Nonexistent") should be (None)
   }
 
   it should "properly remove a deleted element" in {
-    val memTable = new MemTable()
+    val memTable = new MemTable(0)
     memTable.put("Key1", "Value1")
     memTable.get("Key1") should be (Some("Value1"))
     memTable.delete("Key1") should be (Some("Value1"))
@@ -35,7 +35,7 @@ class MemTableTest extends AnyFlatSpec with should.Matchers {
   }
 
   it should "keep track of its size in puts and deletes" in {
-    val memTable = new MemTable()
+    val memTable = new MemTable(0)
     val (key, value) = ("Value1", "Key1")
     val bytes: Long = key.length + value.length + MemTable.EntryOverheadBytes
     memTable.put(key, value)

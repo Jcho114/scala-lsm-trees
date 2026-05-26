@@ -45,7 +45,7 @@ object ReaderWriterUtils {
   def writeIndex(out: DataOutputStream, index: Index): Int = {
     writeString(out, index.key)
     out.writeLong(index.offset)
-    4 + index.key.getBytes("UTF-8").length + 4
+    4 + index.key.getBytes("UTF-8").length + 8
   }
 
   /**
